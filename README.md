@@ -50,31 +50,46 @@ endüstri standardı `ffmpeg` kullanılır (NVENC / VA-API / Quick Sync desteği
 
 ## Kurulum
 
-En kolayı **Releases** sayfasından hazır paketi indirmek (Rust gerekmez):
+### Debian / Ubuntu / Mint (`.deb`)
+
+```bash
+sudo apt install ./limedal-<sürüm>_amd64.deb
+limedal doctor       # her şey yerinde mi?
+limedal run          # arayüzü aç
+```
+
+`apt` gerekli bağımlılığı (`ffmpeg`) kendisi kurar. Paket şunları yerleştirir:
+
+| Yol | İçerik |
+|---|---|
+| `/usr/bin/limedal` | ikili |
+| `/usr/share/applications/limedal.desktop` | uygulama menüsü girdisi |
+| `/usr/share/applications/limedal-clip.desktop` | "Klip kaydet" kısayolu |
+| `/usr/lib/systemd/user/limedal.service` | oturum açılışında otomatik başlatma |
+
+### Arşiv (kullanıcı dizinine, `sudo` gerekmez)
 
 ```bash
 mkdir -p limedal && tar -xzf limedal-<sürüm>-linux-x86_64.tar.gz -C limedal
 cd limedal
 bash install.sh      # hazır ikiliyi ~/.local/bin/limedal olarak kurar
-limedal doctor       # her şey yerinde mi?
-limedal run          # arayüzü aç
 ```
 
-Kaynaktan derlemek istersen aynı betik `cargo` ile derleyip kurar:
+### Kaynaktan derleme
 
 ```bash
 cd /path/to/LiMedal
-bash install.sh
+bash install.sh      # cargo ile derler ve ~/.local/bin altına kurar
 ```
 
 `install.sh` yalnızca kullanıcı dizinine yazar, `sudo` istemez. Klasörde
 `limedal` ikili dosyası varsa derleme atlanır.
 
-Derlemeyi elle yapmak istersen:
+Elle derleyip `.deb` üretmek istersen:
 
 ```bash
 cargo build --release
-./target/release/limedal run
+bash packaging/build-deb.sh      # target/deb/limedal_<sürüm>_amd64.deb
 ```
 
 ---
@@ -204,6 +219,7 @@ Yoksa PipeWire'da monitör kapalıdır: `wpctl status`.
 
 ```
 Cargo.toml
+packaging/build-deb.sh   .deb paketi üretir
 src/
   main.rs         CLI + pencere açılışı
   core.rs         bileşenleri birleştiren çekirdek, arka plan işçileri
@@ -226,6 +242,10 @@ systemd/, desktop/  servis ve masaüstü girdisi
 ## Kaldırma
 
 ```bash
+# .deb ile kurduysan:
+sudo apt remove limedal
+
+# install.sh ile kurduysan:
 bash uninstall.sh
 ```
 

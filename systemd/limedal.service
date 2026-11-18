@@ -8,7 +8,9 @@ Type=simple
 # Oturum X11 değilse ffmpeg için gerekli olabilir. Servis başlamadan önce
 # `systemctl --user import-environment DISPLAY XAUTHORITY WAYLAND_DISPLAY`
 # çalıştırın (README'deki "Sorun giderme" bölümüne bakın).
-ExecStart=%h/.local/bin/limedal run
+# Yol kuruluma göre değişir: ~/.local/bin/limedal (install.sh ile kullanıcı
+# kurulumu) ya da /usr/bin/limedal (.deb paketi).
+ExecStart=__EXEC__ run
 Restart=on-failure
 RestartSec=4
 Nice=5

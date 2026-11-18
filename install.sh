@@ -84,7 +84,7 @@ for entry in limedal limedal-clip; do
     || err "masaüstü girdisi yazılamadı: $entry"
 done
 
-cp "$SRC/systemd/limedal.service" "$UNIT_DIR/limedal.service" \
+sed "s|__EXEC__|$TARGET|g" "$SRC/systemd/limedal.service" > "$UNIT_DIR/limedal.service" \
   && ok "systemd servisi: $UNIT_DIR/limedal.service" \
   || err "systemd servisi yazılamadı"
 

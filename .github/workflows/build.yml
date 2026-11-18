@@ -36,20 +36,28 @@ jobs:
           ./target/release/limedal help
           ./target/release/limedal status || true
 
-      - name: Paketle
+      - name: Paketle (tar.gz + .deb)
         id: pack
         run: |
           VERSION=$(awk -F'"' '/^version = /{print $2; exit}' Cargo.toml)
           NAME="limedal-$VERSION-linux-x86_64"
+          DEB="limedal_${VERSION}_amd64.deb"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "deb=$DEB" >> "$GITHUB_OUTPUT"
+
           mkdir -p dist
           cp target/release/limedal dist/
           cp install.sh uninstall.sh README.md LICENSE dist/
-          cp -r desktop systemd dist/
+          cp -r desktop systemd packaging dist/
           tar -czf "$NAME.tar.gz" -C dist .
           sha256sum "$NAME.tar.gz" > "$NAME.tar.gz.sha256"
-          ls -l "$NAME.tar.gz"
+
+          bash packaging/build-deb.sh
+          cp "target/deb/$DEB" .
+          sha256sum "$DEB" > "$DEB.sha256"
+
+          ls -l "$NAME.tar.gz" "$DEB"
 
       # Artifact kotası dolduğu için çıktılar doğrudan Release'e yükleniyor:
       # release asset'leri Actions artifact deposundan sayılmaz.
@@ -60,15 +68,19 @@ jobs:
         run: |
           VERSION="${{ steps.pack.outputs.version }}"
           NAME="${{ steps.pack.outputs.name }}"
+          DEB="${{ steps.pack.outputs.deb }}"
           TAG="v$VERSION"
           cat > notes.md <<'EOF'
           Linux (Debian/Ubuntu) için Medal.tv alternatifi: arka planda sürekli oyun
           kaydı tutar, bir tuşa bastığında son N saniyeyi klibe çevirir.
 
-          Paket içeriği: derlenmiş limedal ikilisi, install.sh/uninstall.sh,
-          masaüstü girdileri ve systemd servisi.
+          Kurulum (.deb — Rust gerekmez):
 
-          Kurulum:
+              sudo apt install ./limedal-<sürüm>_amd64.deb
+              limedal doctor
+              limedal run
+
+          Kurulum (arşiv — kullanıcı dizinine, sudo yok):
 
               mkdir -p limedal
               tar -xzf limedal-<sürüm>-linux-x86_64.tar.gz -C limedal
@@ -80,10 +92,11 @@ jobs:
           Opsiyonel: pulseaudio-utils (ses kaynakları), libnotify-bin (bildirimler)
           Klipler: ~/Videos/LiMedal
           EOF
+          ASSETS=("$NAME.tar.gz" "$NAME.tar.gz.sha256" "$DEB" "$DEB.sha256")
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$NAME.tar.gz" "$NAME.tar.gz.sha256" --clobber
+            gh release upload "$TAG" "${ASSETS[@]}" --clobber
           else
-            gh release create "$TAG" "$NAME.tar.gz" "$NAME.tar.gz.sha256" \
+            gh release create "$TAG" "${ASSETS[@]}" \
               --title "LiMedal $VERSION" \
               --notes-file notes.md
           fi
