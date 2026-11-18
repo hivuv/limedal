@@ -1,0 +1,17 @@
+[Unit]
+Description=LiMedal — oyun klip motoru (Medal alternatifi)
+After=graphical-session.target pipewire.service wireplumber.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+# Oturum X11 değilse ffmpeg için gerekli olabilir. Servis başlamadan önce
+# `systemctl --user import-environment DISPLAY XAUTHORITY WAYLAND_DISPLAY`
+# çalıştırın (README'deki "Sorun giderme" bölümüne bakın).
+ExecStart=%h/.local/bin/limedal run
+Restart=on-failure
+RestartSec=4
+Nice=5
+
+[Install]
+WantedBy=graphical-session.target

@@ -1,0 +1,49 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux-release:
+    name: Linux x86_64 (release)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sistem paketleri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libxkbcommon-dev libwayland-dev libx11-dev libxcb1-dev \
+            libgl1-mesa-dev ffmpeg
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Derle (release)
+        run: cargo build --release --verbose
+
+      - name: Duman testi (arayüz açmadan)
+        run: |
+          ./target/release/limedal version
+          ./target/release/limedal help
+          ./target/release/limedal status || true
+
+      - name: Paketle
+        run: |
+          mkdir -p dist
+          cp target/release/limedal dist/
+          cp install.sh uninstall.sh README.md LICENSE dist/
+          cp -r desktop systemd dist/
+          tar -czf limedal-linux-x86_64.tar.gz -C dist .
+          ls -l limedal-linux-x86_64.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: limedal-linux-x86_64
+          path: limedal-linux-x86_64.tar.gz
+          if-no-files-found: error

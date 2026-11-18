@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=LiMedal — Klip kaydet
+GenericName=Son saniyeleri kaydet
+Comment=Son 30 saniyeyi klibe çevir (motor çalışıyor olmalı)
+Exec=__EXEC__ clip
+Icon=media-record
+Terminal=false
+Categories=AudioVideo;Video;Game;
+Keywords=klip;clip;replay;medal;kayıt;
+StartupNotify=false

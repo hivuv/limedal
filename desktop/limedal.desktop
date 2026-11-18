@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=LiMedal
+GenericName=Oyun Klip Kaydedici
+Comment=Son saniyeleri klibe çevir — Linux için Medal alternatifi
+Exec=__EXEC__ run
+Icon=media-record
+Terminal=false
+Categories=AudioVideo;Video;Game;
+Keywords=klip;clip;replay;screenshot;medal;kayıt;oyun;
+StartupNotify=false

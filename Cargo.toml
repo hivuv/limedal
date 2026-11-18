@@ -1,0 +1,24 @@
+[package]
+name = "limedal"
+version = "2.0.0"
+edition = "2021"
+rust-version = "1.76"
+description = "Linux için Medal.tv alternatifi — oyun klip motoru"
+license = "MIT"
+
+[[bin]]
+name = "limedal"
+path = "src/main.rs"
+
+[dependencies]
+eframe = "0.29"
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+libc = "0.2"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true

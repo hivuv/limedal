@@ -1,0 +1,6 @@
+/target/
+
+# LiMedal çalışma anı
+.tmp/
+*.mp4
+*.log
