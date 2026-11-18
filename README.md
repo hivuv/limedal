@@ -67,6 +67,13 @@ limedal run          # arayüzü aç
 | `/usr/share/applications/limedal-clip.desktop` | "Klip kaydet" kısayolu |
 | `/usr/lib/systemd/user/limedal.service` | oturum açılışında otomatik başlatma |
 
+Servisi açmak istersen (isteğe bağlı):
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now limedal.service
+```
+
 ### Arşiv (kullanıcı dizinine, `sudo` gerekmez)
 
 ```bash
