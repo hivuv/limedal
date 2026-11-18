@@ -50,14 +50,25 @@ endüstri standardı `ffmpeg` kullanılır (NVENC / VA-API / Quick Sync desteği
 
 ## Kurulum
 
+En kolayı **Releases** sayfasından hazır paketi indirmek (Rust gerekmez):
+
 ```bash
-cd /path/to/LiMedal
-bash install.sh      # derler ve ~/.local/bin/limedal olarak kurar
+mkdir -p limedal && tar -xzf limedal-<sürüm>-linux-x86_64.tar.gz -C limedal
+cd limedal
+bash install.sh      # hazır ikiliyi ~/.local/bin/limedal olarak kurar
 limedal doctor       # her şey yerinde mi?
 limedal run          # arayüzü aç
 ```
 
-`install.sh` yalnızca kullanıcı dizinine yazar, `sudo` istemez.
+Kaynaktan derlemek istersen aynı betik `cargo` ile derleyip kurar:
+
+```bash
+cd /path/to/LiMedal
+bash install.sh
+```
+
+`install.sh` yalnızca kullanıcı dizinine yazar, `sudo` istemez. Klasörde
+`limedal` ikili dosyası varsa derleme atlanır.
 
 Derlemeyi elle yapmak istersen:
 
