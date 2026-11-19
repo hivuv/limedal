@@ -559,6 +559,12 @@ impl Core {
             mics.first().cloned().unwrap_or_else(|| "yok".to_string()),
         ));
 
+        lines.push((
+            true,
+            "hyprland".to_string(),
+            crate::hyprland::summary(),
+        ));
+
         let devices = count_input_devices();
         lines.push((
             devices > 0,

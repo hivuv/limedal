@@ -24,12 +24,18 @@ endüstri standardı `ffmpeg` kullanılır (NVENC / VA-API / Quick Sync desteği
 - Küçük resim ızgarası, favoriler, arama, sıralama, oyun bazlı filtre
 - Seçili klipte **film şeridi önizleme** (klipten 5 kare, ffmpeg ile üretilir)
 - Yeniden adlandırma, yeniden kodlamadan kırpma, silme
+- **Düzenleyici**: film şeridi zaman çizgisi, kare kare gezinme, giriş/çıkış
+  işaretleri, döngülü oynatma, sesli önizleme, GIF ve 720p MP4 dışa aktarma
+- Animasyonlu arayüz: açılış animasyonu, yumuşak görünüm geçişleri, hover
+  efektleri, nabız atan kayıt göstergesi
 - Sistem oynatıcısında açma (`xdg-open`), klasörü açma
 - Yerel ağda token'lı bağlantıyla paylaşım (minik gömülü HTTP sunucusu)
 - Depolama sınırı: eski klipleri temizler, favorilere dokunmaz
 
 **Sistem**
 - Oyun algılama: `/proc` üzerinden Steam / Proton / Wine oyunlarını yoldan tanır
+- **Hyprland uyumlu**: Wayland'de yerel pencere, `hyprctl` ile monitör çözünürlüğü,
+  hazır pencere kuralı ve kısayol önerisi (`limedal hyprland`)
 - Global kısayollar: X11 **ve** Wayland'de çalışan ham `/dev/input` dinleyicisi
 - Masaüstü bildirimleri, systemd kullanıcı servisi
 - CLI ↔ pencere iletişimi unix soket üzerinden (tarayıcı/port yok)
@@ -113,6 +119,7 @@ bash packaging/build-deb.sh      # target/deb/limedal_<sürüm>_amd64.deb
 | `limedal open` | Pencereyi öne getir |
 | `limedal stop` | Kapat |
 | `limedal doctor` | ffmpeg, kodlayıcı, ses, izin kontrolü |
+| `limedal hyprland` | Hyprland pencere kuralı ve kısayol önerisi |
 | `limedal paths` | Klasör yolları |
 | `limedal config dump` / `set capture.fps=120` | Ayarlar |
 
@@ -137,6 +144,37 @@ Bu izni vermek istemiyorsan iki yol var:
   ortamının klavye kısayollarına bağlayacağın `limedal clip` komutu. İkisi de
   motorun çalışıyor olmasına dayanır: systemd servisi açıksa pencere kapalıyken
   de klip alınır.
+
+---
+
+## Düzenleyici
+
+Kütüphanede bir klibe **çift tıkla** (ya da sağ panelde **Düzenle**) — düzenleyici
+açılır. Sol tarafta gerçek video önizlemesi, altında klibin karelerinden üretilen
+film şeridi zaman çizgisi bulunur.
+
+| Kısayol | İşlev |
+|---|---|
+| `Boşluk` | oynat / duraklat |
+| `←` `→` | bir kare geri / ileri |
+| `Shift` + `←` `→` | bir saniye geri / ileri |
+| `I` / `O` | giriş ve çıkış işareti |
+| `X` | işaretleri temizle |
+| `L` | döngü (giriş–çıkış arasında tekrar) |
+| `M` | sesi aç / kapa |
+| `Ctrl+S` | seçimi kırp ve kütüphaneye ekle |
+| `Esc` | kütüphaneye dön |
+
+Yaptıkları:
+
+- **Kırp**: işaretli aralığı *yeniden kodlamadan* yeni klip olarak kaydeder
+- **GIF olarak aktar**: palet tabanlı, titreşimsiz GIF (en fazla 20 saniye)
+- **MP4 (720p) aktar**: `~/Videos/LiMedal/exports/` altına h264 + aac
+- **Paylaş / Klasörü aç / Favori / Yeniden adlandır / Sil**
+
+Önizleme, ffmpeg'den ham RGBA kare akışı olarak gelir: sürüklerken tek kare
+("scrub"), oynatırken `-re` ile gerçek zamanlı akış. `ffplay` kuruluysa ses de
+senkron çalar. Kare adımı ≈ 1/30 saniyedir.
 
 ---
 
@@ -181,6 +219,37 @@ kodlayıcı hata verirse otomatik olarak CPU'ya düşülür ve bu durum arayüzd
 
 ---
 
+## Hyprland ve Wayland
+
+LiMedal penceresi Wayland'de **yerel** olarak açılır (wgpu/winit) ve `app_id`
+`limedal` olarak ayarlanır, böylece Hyprland pencere kuralları eşleşir. Monitör
+çözünürlüğü `hyprctl monitors` üzerinden okunur — Wayland'de `xrandr` genelde
+yanıt vermez, bu yüzden XWayland yakalama boyutu doğru hesaplanır.
+
+`limedal hyprland` komutu şu öneriyi yazdırır (aynısı `contrib/hyprland.conf`):
+
+```ini
+windowrulev2 = float, class:^(limedal)$
+windowrulev2 = size 1180 780, class:^(limedal)$
+windowrulev2 = noblur, class:^(limedal)$
+bind = , F9, exec, limedal clip
+bind = , F10, exec, limedal record toggle
+```
+
+Hyprland kısayolları `limedal clip` çağırdığı için `input` grubuna gerek kalmaz —
+motorun arka planda çalışıyor olması yeterlidir (systemd servisi ya da
+`exec-once = limedal run`).
+
+### Yakalama sınırı
+
+Ekran yakalama `x11grab` kullanır: X11 oturumunda ve **XWayland** pencerelerinde
+çalışır — Proton/Steam oyunlarının neredeyse tamamı XWayland kullanır, dolayısıyla
+Hyprland'de oyun kaydı çalışır. Saf Wayland pencereleri (org.freedesktop.portal
+PipeWire akışı gerektiren) bu sürümde yakalanamaz. Oyunu Gamescope ile X11
+modunda çalıştırmak da bir çözümdür.
+
+---
+
 ## Wayland notu
 
 Yakalama `x11grab` kullanır: **X11 oturumunda** ve **Wayland altında XWayland
@@ -190,7 +259,6 @@ ve bu sürümde yok.
 
 Pratik çözümler: giriş ekranında **"Xorg"** oturumunu seç, ya da oyunu Gamescope
 ile X11 modunda çalıştır.
-
 ---
 
 ## Sorun giderme
@@ -238,7 +306,11 @@ src/
   hotkeys.rs      /dev/input ham klavye dinleyicisi
   ipc.rs          unix soket kontrol kanalı (CLI ↔ pencere)
   share.rs        yerel ağ paylaşım sunucusu
-  ui.rs           egui arayüzü
+  ui.rs           egui arayüzü, animasyonlar, açılış ekranı
+  editor.rs       düzenleyici: zaman çizgisi, işaretler, dışa aktarma
+  player.rs       video önizlemesi (ffmpeg kare akışı + scrub)
+  anim.rs         yumuşatma eğrileri ve renk geçişleri
+  hyprland.rs     Hyprland algılama, monitör çözünürlüğü, pencere kuralları
   config.rs       ayarlar + doğrulama
   util.rs         yollar, loglama, biçimlendirme
 systemd/, desktop/  servis ve masaüstü girdisi

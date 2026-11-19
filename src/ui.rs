@@ -9,21 +9,26 @@ use eframe::egui;
 
 use crate::capture::CaptureStatus;
 use crate::config::Config;
+use crate::anim;
 use crate::core::{Core, Toast, ToastKind};
+use crate::editor::{Editor, EditorAction};
+use crate::hyprland;
 use crate::gamedetect::Game;
 use crate::library::{Clip, Stats};
 use crate::util::{human_bytes, human_duration, now, time_ago};
 
-const BG: egui::Color32 = egui::Color32::from_rgb(11, 11, 16);
-const PANEL: egui::Color32 = egui::Color32::from_rgb(18, 18, 25);
-const CARD: egui::Color32 = egui::Color32::from_rgb(24, 24, 32);
-const CARD_HOVER: egui::Color32 = egui::Color32::from_rgb(31, 31, 42);
-const LINE: egui::Color32 = egui::Color32::from_rgb(38, 38, 50);
-const TEXT: egui::Color32 = egui::Color32::from_rgb(236, 236, 246);
-const MUTED: egui::Color32 = egui::Color32::from_rgb(142, 142, 165);
-const ACCENT: egui::Color32 = egui::Color32::from_rgb(124, 92, 255);
-const DANGER: egui::Color32 = egui::Color32::from_rgb(255, 77, 109);
-const OK: egui::Color32 = egui::Color32::from_rgb(61, 220, 151);
+pub const BG: egui::Color32 = egui::Color32::from_rgb(11, 11, 16);
+pub const PANEL: egui::Color32 = egui::Color32::from_rgb(18, 18, 25);
+pub const CARD: egui::Color32 = egui::Color32::from_rgb(24, 24, 32);
+pub const CARD_HOVER: egui::Color32 = egui::Color32::from_rgb(31, 31, 42);
+pub const LINE: egui::Color32 = egui::Color32::from_rgb(38, 38, 50);
+pub const TEXT: egui::Color32 = egui::Color32::from_rgb(236, 236, 246);
+pub const MUTED: egui::Color32 = egui::Color32::from_rgb(142, 142, 165);
+pub const MUTED_DIM: egui::Color32 = egui::Color32::from_rgb(96, 96, 118);
+pub const ACCENT: egui::Color32 = egui::Color32::from_rgb(124, 92, 255);
+pub const ACCENT_2: egui::Color32 = egui::Color32::from_rgb(77, 217, 255);
+pub const DANGER: egui::Color32 = egui::Color32::from_rgb(255, 77, 109);
+pub const OK: egui::Color32 = egui::Color32::from_rgb(61, 220, 151);
 
 #[derive(PartialEq, Clone, Copy)]
 enum View {
@@ -69,6 +74,8 @@ pub struct App {
     log_tail: Vec<String>,
     doctor: Vec<(bool, String, String)>,
     doctor_at: f64,
+    editor: Option<Editor>,
+    started_at: f64,
 }
 
 impl App {
@@ -81,6 +88,13 @@ impl App {
         style.visuals.override_text_color = Some(TEXT);
         style.spacing.item_spacing = egui::vec2(8.0, 8.0);
         style.spacing.button_padding = egui::vec2(10.0, 6.0);
+        style.animation_time = 0.16;
+        style.visuals.window_rounding = egui::Rounding::same(14.0);
+        style.visuals.menu_rounding = egui::Rounding::same(10.0);
+        style.visuals.widgets.inactive.rounding = egui::Rounding::same(9.0);
+        style.visuals.widgets.hovered.rounding = egui::Rounding::same(9.0);
+        style.visuals.widgets.active.rounding = egui::Rounding::same(9.0);
+        style.visuals.selection.bg_fill = egui::Color32::from_rgba_unmultiplied(124, 92, 255, 90);
         cc.egui_ctx.set_style(style);
         core.set_ctx(cc.egui_ctx.clone());
 
@@ -113,6 +127,8 @@ impl App {
             log_tail: Vec::new(),
             doctor: Vec::new(),
             doctor_at: 0.0,
+            editor: None,
+            started_at: now(),
             core,
         };
         app.refresh(true);
@@ -189,6 +205,10 @@ impl App {
                     ui.label(egui::RichText::new("LiMedal").size(19.0).strong().color(TEXT));
                     ui.add_space(10.0);
 
+                    if hyprland::detected() {
+                        ui.label(egui::RichText::new("Hyprland").size(11.0).color(ACCENT_2));
+                        ui.add_space(6.0);
+                    }
                     let (dot, label) = if self.status.recording {
                         (DANGER, format!("kayıt sürüyor · {}", human_duration(self.status.recording_seconds)))
                     } else if self.status.running {
@@ -197,7 +217,9 @@ impl App {
                         (DANGER, "kayıt durdu".to_string())
                     };
                     let (rect, _) = ui.allocate_exact_size(egui::vec2(9.0, 9.0), egui::Sense::hover());
-                    ui.painter().circle_filled(rect.center(), 4.0, dot);
+                    let pulse_t = if self.status.recording { anim::pulse(now(), 1.1) } else { 0.0 };
+                    let dot_color = anim::lerp_color(dot, egui::Color32::WHITE, pulse_t * 0.45);
+                    ui.painter().circle_filled(rect.center(), 4.0 + pulse_t * 1.2, dot_color);
                     ui.label(egui::RichText::new(label).size(12.0).color(MUTED));
 
                     if let Some(game) = &self.game {
@@ -246,7 +268,19 @@ impl App {
                 ];
                 for (view, label) in items {
                     let selected = self.view == view;
-                    if ui.selectable_label(selected, egui::RichText::new(label).size(14.0)).clicked() {
+                    let response = ui.selectable_label(selected, egui::RichText::new(label).size(14.0));
+                    let glow = ui
+                        .ctx()
+                        .animate_bool(egui::Id::new(("nav-glow", view as u8)), selected);
+                    if glow > 0.01 {
+                        let r = response.rect;
+                        let bar = egui::Rect::from_min_size(
+                            egui::pos2(r.left() + 2.0, r.center().y - 9.0 * glow),
+                            egui::vec2(3.0, 18.0 * glow),
+                        );
+                        ui.painter().rect_filled(bar, 2.0, ACCENT);
+                    }
+                    if response.clicked() {
                         self.view = view;
                         if view == View::Settings {
                             self.draft = self.core.config();
@@ -298,6 +332,8 @@ impl App {
             .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-18.0, -18.0))
             .show(ctx, |ui| {
                 for toast in &self.toasts {
+                    let age = anim::progress((now() - toast.at) as f32, 0.28);
+                    let alpha = anim::ease_out_cubic(age);
                     let color = match toast.kind {
                         ToastKind::Ok => OK,
                         ToastKind::Error => DANGER,
@@ -305,8 +341,8 @@ impl App {
                     };
                     ui.horizontal(|ui| {
                         let (rect, _) = ui.allocate_exact_size(egui::vec2(4.0, 20.0), egui::Sense::hover());
-                        ui.painter().rect_filled(rect, 2.0, color);
-                        ui.label(egui::RichText::new(toast.text.clone()).size(12.5).color(TEXT));
+                        ui.painter().rect_filled(rect, 2.0, anim::with_alpha(color, alpha));
+                        ui.label(egui::RichText::new(toast.text.clone()).size(12.5).color(anim::with_alpha(TEXT, alpha)));
                     });
                 }
             });
@@ -421,6 +457,9 @@ impl App {
             egui::Sense::click(),
         );
         let hovered = response.hovered();
+        let hover_t = ui
+            .ctx()
+            .animate_bool(egui::Id::new(("card-hover", clip.meta.id.as_str())), hovered);
         let is_selected = self.selected.as_deref() == Some(clip.meta.id.as_str());
 
         let border = if is_selected {
@@ -432,7 +471,7 @@ impl App {
         };
         let painter = ui.painter_at(rect.expand(2.0));
         painter.rect_filled(rect.expand(1.0), 9.0_f32, border);
-        painter.rect_filled(rect, 8.0_f32, if hovered { CARD_HOVER } else { CARD });
+        painter.rect_filled(rect, 8.0_f32, anim::lerp_color(CARD, CARD_HOVER, hover_t));
 
         let thumb_rect = egui::Rect::from_min_size(
             egui::pos2(rect.left() + 1.0, rect.top() + 1.0),
@@ -495,6 +534,9 @@ impl App {
             MUTED,
         );
 
+        if response.double_clicked() {
+            self.open_editor(clip.clone());
+        }
         if response.clicked() {
             if self.selected.as_deref() == Some(clip.meta.id.as_str()) {
                 self.selected = None;
@@ -593,6 +635,9 @@ impl App {
 
                 ui.add_space(10.0);
                 ui.horizontal_wrapped(|ui| {
+                    if ui.button("Düzenle").clicked() {
+                        self.open_editor(clip.clone());
+                    }
                     if ui.button("Oynat").clicked() {
                         self.core.open_path(&clip.video());
                     }
@@ -1257,6 +1302,71 @@ impl App {
         });
     }
 
+    fn open_editor(&mut self, clip: Clip) {
+        self.editor = Some(Editor::open(self.core.clone(), clip));
+        self.selected = None;
+        self.strip = None;
+        self.trim_id = None;
+    }
+
+    fn draw_splash(&self, ctx: &egui::Context) {
+        let elapsed = (now() - self.started_at) as f32;
+        if elapsed >= 1.4 {
+            return;
+        }
+        let fade = 1.0 - anim::ease_in_out(anim::progress(elapsed - 0.95, 0.42));
+        let scale = anim::ease_out_back(anim::progress(elapsed, 0.75)).max(0.01);
+        let rise = anim::ease_out_cubic(anim::progress(elapsed, 0.65));
+        let screen = ctx.screen_rect();
+        let painter = ctx.layer_painter(egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::new("limedal-splash"),
+        ));
+        painter.rect_filled(screen, 0.0, anim::with_alpha(BG, fade));
+
+        let center = screen.center() + egui::vec2(0.0, 22.0 * (1.0 - rise));
+        let size = 66.0 * scale;
+        let icon = egui::Rect::from_center_size(
+            center - egui::vec2(0.0, 26.0),
+            egui::vec2(size, size),
+        );
+        painter.rect_filled(
+            icon.expand(scale * 14.0),
+            22.0 * scale,
+            anim::with_alpha(ACCENT, 0.12 * fade),
+        );
+        painter.rect_filled(icon, 18.0 * scale, anim::with_alpha(ACCENT, fade));
+
+        let c = icon.center();
+        let s = 24.0 * scale;
+        let triangle = vec![
+            egui::pos2(c.x - s * 0.35, c.y - s * 0.5),
+            egui::pos2(c.x - s * 0.35, c.y + s * 0.5),
+            egui::pos2(c.x + s * 0.55, c.y),
+        ];
+        painter.add(egui::Shape::convex_polygon(
+            triangle,
+            anim::with_alpha(TEXT, fade),
+            egui::Stroke::NONE,
+        ));
+
+        painter.text(
+            center + egui::vec2(0.0, 40.0),
+            egui::Align2::CENTER_CENTER,
+            "LiMedal",
+            egui::FontId::proportional(24.0),
+            anim::with_alpha(TEXT, fade),
+        );
+        painter.text(
+            center + egui::vec2(0.0, 64.0),
+            egui::Align2::CENTER_CENTER,
+            "oyun klipleri",
+            egui::FontId::proportional(12.0),
+            anim::with_alpha(MUTED, fade),
+        );
+        ctx.request_repaint();
+    }
+
     fn toggle_record(&mut self) {
         let core = self.core.clone();
         std::thread::spawn(move || {
@@ -1286,10 +1396,21 @@ impl eframe::App for App {
         self.refresh(false);
 
         self.draw_top(ctx);
-        self.draw_side(ctx);
-        self.draw_detail(ctx);
+        if self.editor.is_none() {
+            self.draw_side(ctx);
+        }
+        if self.editor.is_none() {
+            self.draw_detail(ctx);
+        }
 
+        let mut close_editor = false;
         egui::CentralPanel::default().show(ctx, |ui| {
+            if let Some(editor) = self.editor.as_mut() {
+                if editor.ui(ui) == EditorAction::Close {
+                    close_editor = true;
+                }
+                return;
+            }
             match self.view {
                 View::Library => self.draw_library(ui),
                 View::Live => self.draw_live(ui),
@@ -1298,12 +1419,18 @@ impl eframe::App for App {
             }
         });
 
+        if close_editor {
+            self.editor = None;
+            self.invalidate();
+        }
+        self.draw_splash(ctx);
         self.draw_toasts(ctx);
-        ctx.request_repaint_after(Duration::from_millis(400));
+        let animating = self.editor.is_some() || self.status.recording || now() - self.started_at < 1.4;
+        ctx.request_repaint_after(Duration::from_millis(if animating { 16 } else { 400 }));
     }
 }
 
-fn load_texture(ctx: &egui::Context, path: &Path) -> Option<egui::TextureHandle> {
+pub fn load_texture(ctx: &egui::Context, path: &Path) -> Option<egui::TextureHandle> {
     let bytes = std::fs::read(path).ok()?;
     let image = image::load_from_memory(&bytes).ok()?;
     let rgba = image.to_rgba8();

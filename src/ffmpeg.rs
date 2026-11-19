@@ -220,6 +220,11 @@ impl Ffmpeg {
             }
         }
 
+        // Hyprland'de XWayland kök penceresi xrandr'a yanıt vermeyebilir.
+        if let Some((w, h)) = crate::hyprland::monitor_resolution() {
+            return (w, h, "hyprland".to_string());
+        }
+
         let out = Command::new("xdpyinfo")
             .env("DISPLAY", display.to_string())
             .stdin(Stdio::null())

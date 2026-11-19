@@ -2,15 +2,19 @@
 //!
 //! Kullanım: `limedal run` (arayüz), `limedal clip` (klip al), `limedal doctor`.
 
+mod anim;
 mod audio;
 mod capture;
 mod config;
 mod core;
+mod editor;
 mod ffmpeg;
 mod gamedetect;
 mod hotkeys;
+mod hyprland;
 mod ipc;
 mod library;
+mod player;
 mod share;
 mod ui;
 mod util;
@@ -37,6 +41,7 @@ fn dispatch(args: &[String]) -> i32 {
         "stop" | "quit" => cmd_stop(),
         "open" | "show" => cmd_open(),
         "doctor" => cmd_doctor(),
+        "hyprland" => cmd_hyprland(),
         "paths" => cmd_paths(),
         "config" => cmd_config(args),
         "version" | "--version" | "-V" => {
@@ -68,6 +73,7 @@ fn print_help() {
     println!("  open                     Arayüzü öne getir");
     println!("  stop                     Uygulamayı kapat");
     println!("  doctor                   ffmpeg, kodlayıcı, ses, izin kontrolü");
+    println!("  hyprland                 Hyprland pencere kuralı ve kısayol önerisi");
     println!("  paths                    Klasör yolları");
     println!("  config path|dump|set k=v Ayarlar");
     println!("  version                  Sürüm");
@@ -91,7 +97,8 @@ fn run_gui() -> i32 {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_inner_size([1180.0, 780.0])
             .with_min_inner_size([900.0, 560.0])
-            .with_title("LiMedal"),
+            .with_title("LiMedal")
+            .with_app_id("limedal"),
         ..Default::default()
     };
 
@@ -373,6 +380,11 @@ fn cmd_doctor() -> i32 {
         return 1;
     }
     println!("Her şey yerinde. 'limedal run' ile başlatabilirsiniz.");
+    0
+}
+
+fn cmd_hyprland() -> i32 {
+    print!("{}", hyprland::config_snippet());
     0
 }
 
