@@ -479,7 +479,7 @@ impl App {
         let ratio = (self.status.fill_seconds as f32 / buffer).clamp(0.0, 1.0);
         let bar = egui::Rect::from_min_size(
             egui::pos2(rect.left() + 14.0, rect.top() + 42.0),
-            egui::vec2(rect.width() - 28.0, 6.0),
+            egui::vec2((rect.width() - 28.0).max(1.0), 6.0),
         );
         theme::progress(painter, bar, ratio, ACCENT, ACCENT_2);
 
@@ -744,7 +744,7 @@ impl App {
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
                         ui.label(
-                            egui::RichText::new("Hoş geldin 👋")
+                            egui::RichText::new("Hoş geldin")
                                 .size(16.0)
                                 .strong()
                                 .color(TEXT),

@@ -183,7 +183,8 @@ senkron çalar. Kare adımı ≈ 1/30 saniyedir.
 1. `ffmpeg` sürekli çalışır ve videoyu **N saniyelik mp4 segmentlerine** yazar
    (`-f segment -reset_timestamps 1`), her segment sınırında zorunlu keyframe vardır.
 2. Bir arka plan işçisi tampon süresinden eski segmentleri siler; disk alanı
-   kritik seviyeye inerse kaydı durdurur.
+   kritik seviyeye inerse kaydı durdurur. Segmentler `~/.cache/limedal/buffer`
+   altında **diskte** tutulur (tmpfs değil), böylece uzun tamponlar RAM'i şişirmez.
 3. `F9` geldiğinde son N saniyeyi kapsayan segmentler `concat` demuxer'ı ile
    **yeniden kodlanmadan** birleştirilir, sonra tam N saniyeye kırpılır.
 4. Klip `~/Videos/LiMedal/<id>/` altına `clip.mp4` + `thumb.jpg` + `meta.json`
@@ -277,6 +278,17 @@ Servisle çalıştırıyorsan oturum ortamını bir kez aktarman gerekir:
 systemctl --user import-environment DISPLAY XAUTHORITY WAYLAND_DISPLAY
 systemctl --user restart limedal.service
 ```
+
+**"Tampon henüz dolmadı"**
+Motor yeni başladıysa (uygulama açılışı, ayar kaydı ya da **Yeniden başlat**) ilk
+segment yazılanana kadar (`segment_seconds`, varsayılan 2 sn) klip alınamaz.
+Birkaç saniye bekleyip tekrar dene. Birleştirme sırasında son segment yarım
+kalırsa LiMedal otomatik olarak bir önceki segmentle klibi oluşturur.
+
+**"moov atom not found" / birleştirme hatası**
+Bu sürümde giderildi: klip yalnızca sonlandırılmış segmentlerden üretilir.
+Hâlâ görürsen `~/.cache/limedal/limedal.log` dosyasını ve `limedal doctor`
+çıktısını paylaş.
 
 **Ses yok**
 `pactl list short sources` çıktısında `.monitor` ile biten bir kaynak olmalı.

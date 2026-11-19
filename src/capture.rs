@@ -1,7 +1,8 @@
 //! Yakalama motoru: sürekli segment tamponu, klip çıkarma, tam kayıt.
 
 use std::collections::VecDeque;
-use std::io::{BufRead, BufReader};
+use std::fs::File;
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -11,7 +12,7 @@ use crate::audio::AudioSources;
 use crate::config::Config;
 use crate::ffmpeg::{encoder_label, file_size, Ffmpeg};
 use crate::library::{Clip, Library};
-use crate::util::{human_duration, now, state_dir, Logger};
+use crate::util::{cache_dir, human_duration, now, state_dir, Logger};
 
 #[derive(Clone, Debug)]
 pub struct CaptureStatus {
@@ -244,8 +245,12 @@ impl Engine {
         }
         self.stop_locked();
 
-        let base = state_dir().join("buffer");
+        // Segmentler diskte (XDG_CACHE_HOME) tutulur: uzun tamponlar tmpfs'te
+        // RAM'i şişirip yazmayı yarıda kesebiliyordu.
+        let base = cache_dir().join("buffer");
         let _ = std::fs::remove_dir_all(&base);
+        // Eski sürümlerden kalan tmpfs dizinini de temizle.
+        let _ = std::fs::remove_dir_all(state_dir().join("buffer"));
         std::fs::create_dir_all(&base).map_err(|err| format!("Tampon dizini: {}", err))?;
 
         let config = self.config_snapshot();
@@ -557,25 +562,24 @@ impl Engine {
             .unwrap_or(config.app.clip_seconds_default)
             .clamp(2, 1800);
 
-        let (buffer_dir, seg_seconds, running) = match self.inner.lock() {
-            Ok(inner) => (
-                inner.buffer_dir.clone(),
-                inner.seg_seconds,
-                inner.child.is_some(),
-            ),
+        let (buffer_dir, seg_seconds) = match self.inner.lock() {
+            Ok(inner) => (inner.buffer_dir.clone(), inner.seg_seconds),
             Err(_) => return Err("durum okunamadı".to_string()),
         };
         let buffer_dir = buffer_dir.ok_or_else(|| "Tampon dizini hazır değil.".to_string())?;
 
-        let mut segments: Vec<(u64, PathBuf)> = list_segments(&buffer_dir)
+        // Yalnızca sonlandırılmış segmentler kullanılabilir: ffmpeg'in hâlâ
+        // yazdığı dosyada moov atomu yoktur, concat demuxer'ı onu açamaz
+        // ("moov atom not found"). Bu yüzden her dosyayı tek tek doğruluyoruz.
+        let segments: Vec<(u64, PathBuf)> = list_segments(&buffer_dir)
             .into_iter()
-            .filter(|(_, path)| file_size(path) > 512)
+            .filter(|(_, path)| is_finalized_mp4(path))
             .collect();
-        if running && segments.len() > 1 {
-            segments.pop(); // yazılmakta olan segment
-        }
         if segments.is_empty() {
-            return Err("Tampon henüz dolmadı, birkaç saniye sonra tekrar deneyin.".to_string());
+            return Err(
+                "Tampon henüz dolmadı (ilk segment yazılıyor). Birkaç saniye sonra tekrar deneyin."
+                    .to_string(),
+            );
         }
 
         let needed = ((wanted as f64) / (seg_seconds.max(1) as f64)).ceil() as usize;
@@ -598,9 +602,31 @@ impl Engine {
         let joined = tmp_dir.join(format!("{}-joined.mp4", stamp));
         let trimmed = tmp_dir.join(format!("{}-final.mp4", stamp));
 
-        self.ff
-            .concat(&list_file, &joined)
-            .map_err(|err| format!("Klipler birleştirilemedi: {}", err))?;
+        if let Err(first_error) = self.ff.concat(&list_file, &joined) {
+            // Son segment yarım kalmış olabilir: bir öncekiyle bir kez daha dene.
+            let mut recovered = false;
+            if chosen.len() > 1 {
+                let mut retry_text = String::new();
+                for path in &chosen[..chosen.len() - 1] {
+                    retry_text.push_str(&format!("file '{}'\n", path.to_string_lossy()));
+                }
+                if std::fs::write(&list_file, retry_text).is_ok()
+                    && self.ff.concat(&list_file, &joined).is_ok()
+                {
+                    recovered = true;
+                    self.log.warn(
+                        "Son segment yarım kalmıştı; klip bir önceki segmentle oluşturuldu.",
+                    );
+                }
+            }
+            if !recovered {
+                return Err(format!(
+                    "Klipler birleştirilemedi ({} segment): {}",
+                    chosen.len(),
+                    first_error
+                ));
+            }
+        }
 
         let mut final_path = joined.clone();
         if available > wanted as f64 + 0.5 {
@@ -797,7 +823,7 @@ impl Engine {
             let _ = self.stop_recording(None);
         }
         self.stop_locked();
-        let dir = state_dir().join("buffer");
+        let dir = cache_dir().join("buffer");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -902,6 +928,34 @@ pub fn list_segments(dir: &Path) -> Vec<(u64, PathBuf)> {
     }
     items.sort_by_key(|(number, _)| *number);
     items
+}
+
+/// Bir mp4 dosyasının sonlandırılmış olup olmadığını kontrol eder: mp4 muxer
+/// `moov` kutusunu dosyanın sonuna yazar, yani hâlâ yazılmakta olan segmentte
+/// bu kutu bulunmaz ve concat demuxer'ı dosyayı açamaz.
+fn is_finalized_mp4(path: &Path) -> bool {
+    let size = file_size(path);
+    if size < 4096 {
+        return false;
+    }
+    let window = std::cmp::min(size, 512 * 1024) as usize;
+    let mut file = match File::open(path) {
+        Ok(file) => file,
+        Err(_) => return false,
+    };
+    if file.seek(SeekFrom::Start(size - window as u64)).is_err() {
+        return false;
+    }
+    let mut buffer = vec![0u8; window];
+    let mut filled = 0usize;
+    while filled < buffer.len() {
+        match file.read(&mut buffer[filled..]) {
+            Ok(0) => break,
+            Ok(count) => filled += count,
+            Err(_) => break,
+        }
+    }
+    buffer[..filled].windows(4).any(|chunk| chunk == b"moov")
 }
 
 /// `df` ile boş alanı bayt cinsinden döner.
