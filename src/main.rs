@@ -16,6 +16,7 @@ mod ipc;
 mod library;
 mod player;
 mod share;
+mod theme;
 mod ui;
 mod util;
 

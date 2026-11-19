@@ -10,7 +10,8 @@ use crate::anim::ease_out_cubic;
 use crate::core::{Core, ToastKind};
 use crate::library::Clip;
 use crate::player::Player;
-use crate::ui::{load_texture, ACCENT, DANGER, LINE, MUTED, MUTED_DIM, OK, TEXT};
+use crate::theme::{ACCENT, DANGER, LINE, MUTED, MUTED_DIM, OK, TEXT};
+use crate::ui::load_texture;
 use crate::util::{human_bytes, id_stamp, now};
 
 const MAX_GIF_SECONDS: f64 = 20.0;
